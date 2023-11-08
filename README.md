@@ -24,3 +24,15 @@ Feel free to use `make format` to keep your code tidy.
   - It must produce a static library `btree/btree.a`
   - The library must define all the symbols in `btree/btree.hpp` so we can run our test by linking against it.
     - If you choose to modify `btree/btree.hpp`, make sure you maintain ABI compatibility.
+
+## Week 4 Requirements
+- Implement at least one of the proposed optimizations for your B-Tree
+- make sure `test.sh` runs without errors
+- you may get an idea of your implementation's performance using `perf.sh`
+- you should add more tests than what `test_main.cpp` does, it will miss lots of stuff
+
+On an AWS t3.medium, you should be getting at least 500k lookups/second with `INT=5e7`.
+If you are measuring locally, the performance you can obtain depends on your hardware.
+Most will have better results than the t3.medium.
+On my Desktop, I get around 2.2M lookups/s, for instance.
+We're working on getting you access to a university provided server for your benchmarking.
