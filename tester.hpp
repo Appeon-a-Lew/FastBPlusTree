@@ -27,7 +27,7 @@ struct Tester {
         uint16_t lenOut = 0;
         uint8_t *value = btree_lookup(btree, key.data(), key.size(), lenOut);
 #ifdef NDEBUG
-        if(value[0] != key[0])
+        if(lenOut!=key.size() || (lenOut>0 && value[0] != key[0]))
             throw;
 #else
         auto it = stdMap.find(key);
@@ -70,7 +70,7 @@ struct Tester {
                 btree, key.data(), key.size(), keyOut,
                 [&](unsigned keyLen, uint8_t *payload, unsigned payloadLen) {
 #ifdef NDEBUG
-                    if(payload[0]!=keyOut[0])
+                    if(keyLen!=payloadLen || (payloadLen>0 && payload[0] != keyOut[0]))
                         throw;
 #else
                     assert(shouldContinue);
