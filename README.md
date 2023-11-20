@@ -1,3 +1,19 @@
+# why the late submission
+
+## git problems
+I tried and tried to push but could not becuase of the merge conflicts. So on the 20th did a hard reset and pushed. see the screenshot. Sorry for the inconvenience. 
+
+## known problems
+
+- double free: during deleting the upper is deleted twice 
+- empty string: empty string is breaking 
+- slow scan: the scan is incredibly slow :/
+
+
+
+
+
+
 # DSE Practical Course Exercise Template
 This repository serves as a template for the B-Tree related exercises for the data structure engineering practical course.
 Fork this repository and implement your B-Tree in `btree/btree.cpp`.
@@ -36,3 +52,6 @@ If you are measuring locally, the performance you can obtain depends on your har
 Most will have better results than the t3.medium.
 On my Desktop, I get around 2.2M lookups/s, for instance.
 We're working on getting you access to a university provided server for your benchmarking.
+
+
+
