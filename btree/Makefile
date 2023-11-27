@@ -9,7 +9,7 @@ btree-optimized.a: btree-optimized.o
 	ar rcs btree-optimized.a btree-optimized.o
 
 btree.o:btree.cpp btree.hpp
-	clang++ -Wall -Wextra -g -c btree.cpp -o $@
+	clang++ -Wall -Wextra  -O0 -g -c btree.cpp -o $@
 
 btree-optimized.o: btree.cpp btree.hpp
 	clang++ -Wall -Wextra -g -c btree.cpp -o $@ -O3 -DNDEBUG

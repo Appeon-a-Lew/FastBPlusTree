@@ -1,0 +1,37 @@
+==19863== Memcheck, a memory error detector
+==19863== Copyright (C) 2002-2017, and GNU GPL'd, by Julian Seward et al.
+==19863== Using Valgrind-3.18.1-42b08ed5bd-20211015 and LibVEX; rerun with -h for copyright info
+==19863== Command: ./main-optimized
+==19863== Parent PID: 15224
+==19863== 
+--19863-- 
+--19863-- Valgrind options:
+--19863--    --leak-check=full
+--19863--    --show-leak-kinds=all
+--19863--    --track-origins=yes
+--19863--    --verbose
+--19863--    --log-file=valgrind-out.txt
+--19863-- Contents of /proc/version:
+--19863--   Linux version 6.5.6-76060506-generic (jenkins@warp.pop-os.org) (x86_64-linux-gnu-gcc-12 (Ubuntu 12.3.0-1ubuntu1~22.04) 12.3.0, GNU ld (GNU Binutils for Ubuntu) 2.38) #202310061235~1697396945~22.04~9283e32 SMP PREEMPT_DYNAMIC Sun O
+--19863-- 
+--19863-- Arch and hwcaps: AMD64, LittleEndian, amd64-cx16-lzcnt-rdtscp-sse3-ssse3-avx-avx2-bmi-f16c-rdrand-rdseed
+--19863-- Page sizes: currently 4096, max supported 4096
+--19863-- Valgrind library directory: /usr/libexec/valgrind
+--19863-- Reading syms from /home/appeon_a_lew/praktikum/btree/main-optimized
+### unhandled dwarf2 abbrev form code 0x25
+### unhandled dwarf2 abbrev form code 0x25
+### unhandled dwarf2 abbrev form code 0x25
+### unhandled dwarf2 abbrev form code 0x23
+### unhandled dwarf2 abbrev form code 0x25
+### unhandled dwarf2 abbrev form code 0x25
+### unhandled dwarf2 abbrev form code 0x25
+### unhandled dwarf2 abbrev form code 0x23
+==19863== Valgrind: debuginfo reader: ensure_valid failed:
+==19863== Valgrind:   during call to ML_(img_get)
+==19863== Valgrind:   request for range [1086740402, +4) exceeds
+==19863== Valgrind:   valid image size of 498336 for image:
+==19863== Valgrind:   "/home/appeon_a_lew/praktikum/btree/main-optimized"
+==19863== 
+==19863== Valgrind: debuginfo reader: Possibly corrupted debuginfo file.
+==19863== Valgrind: I can't recover.  Giving up.  Sorry.
+==19863== 
