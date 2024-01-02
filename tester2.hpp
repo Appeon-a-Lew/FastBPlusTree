@@ -7,8 +7,21 @@
 #include <map>
 #include <vector>
 #include <cstdlib>
+std::string string_to_hex(const std::string& input)
+{
+    static const char hex_digits[] = "0123456789ABCDEF";
 
-struct Tester {
+    std::string output;
+    output.reserve(input.length() * 2);
+    for (unsigned char c : input)
+    {
+        output.push_back(hex_digits[c >> 4]);
+        output.push_back(hex_digits[c & 15]);
+    }
+    return output;
+}
+struct Tester
+{
     BTree *btree;
     std::map<std::vector<uint8_t>, std::vector<uint8_t>> stdMap;
 
@@ -16,24 +29,29 @@ struct Tester {
 
     ~Tester() { btree_destroy(btree); }
 
-    void insert(std::vector<uint8_t> &key, std::vector<uint8_t> &value) {
+    void insert(std::vector<uint8_t> &key, std::vector<uint8_t> &value)
+    {
 #ifndef NDEBUG
         stdMap[key] = value;
 #endif
         btree_insert(btree, key.data(), key.size(), value.data(), value.size());
     }
 
-    void lookup(std::vector<uint8_t> &key) {
+    void lookup(std::vector<uint8_t> &key)
+    {
         uint16_t lenOut = 0;
         uint8_t *value = btree_lookup(btree, key.data(), key.size(), lenOut);
 #ifdef NDEBUG
-        if(lenOut!=key.size() || (lenOut>0 && value[0] != key[0]))
+        if (lenOut != key.size() || (lenOut > 0 && value[0] != key[0]))
             throw;
 #else
         auto it = stdMap.find(key);
-        if (it == stdMap.end()) {
+        if (it == stdMap.end())
+        {
             assert(value == nullptr);
-        } else {
+        }
+        else
+        {
             assert(value != nullptr);
             assert(lenOut == it->second.size());
             if (lenOut > 0)
@@ -42,12 +60,14 @@ struct Tester {
 #endif
     }
 
-    void remove(std::vector<uint8_t> &key) {
+    void remove(std::vector<uint8_t> &key)
+    {
         bool wasPresentBtree = btree_remove(btree, key.data(), key.size());
 #ifndef NDEBUG
         auto it = stdMap.find(key);
         bool wasPresent = it != stdMap.end();
-        if (wasPresent) {
+        if (wasPresent)
+        {
             stdMap.erase(it);
         }
         assert(wasPresent == wasPresentBtree);
@@ -57,37 +77,61 @@ struct Tester {
 
     void scan(std::vector<uint8_t> &key,
               const std::function<bool(uint16_t, uint8_t *, uint16_t)>
-              &found_record_cb) {
-        if (getenv("NO_SCAN")) {
+                  &found_record_cb)
+    {
+        if (getenv("NO_SCAN"))
+        {
             return;
         }
         uint8_t keyOut[1 << 10];
         bool shouldContinue = true;
+        auto ctr = 0;
 #ifndef NDEBUG
         auto std_iterator = stdMap.lower_bound(key);
 #endif
         btree_scan(
-                btree, key.data(), key.size(), keyOut,
-                [&](unsigned keyLen, uint8_t *payload, unsigned payloadLen) {
+            btree, key.data(), key.size(), keyOut,
+            [&](unsigned keyLen, uint8_t *payload, unsigned payloadLen)
+            {
 #ifdef NDEBUG
-                    if(keyLen!=payloadLen || (payloadLen>0 && payload[0] != keyOut[0]))
-                        throw;
+                if (keyLen != payloadLen || (payloadLen > 0 && payload[0] != keyOut[0]))
+                    throw;
 #else
-                    assert(shouldContinue);
-                    assert(std_iterator != stdMap.end());
-                    assert(std_iterator->first.size() == keyLen);
-                    if (keyLen)
-                        assert(memcmp(std_iterator->first.data(), keyOut, keyLen) == 0);
-                    assert(std_iterator->second.size() == payloadLen);
-                    if (payloadLen)
-                        assert(memcmp(std_iterator->second.data(), payload, payloadLen) == 0);
-                    ++std_iterator;
+                // std::cout << "the iteration is : " << ctr++ << std::endl;
+                assert(shouldContinue);
+                assert(std_iterator != stdMap.end());
+                assert(std_iterator->first.size() == keyLen);
+                if (keyLen)
+                    assert(memcmp(std_iterator->first.data(), keyOut, keyLen) == 0);
+                assert(std_iterator->second.size() == payloadLen);
+                if (payloadLen)
+                    assert(memcmp(std_iterator->second.data(), payload, payloadLen) == 0);
+                ++std_iterator;
 #endif
-                    shouldContinue = found_record_cb(keyLen, payload, payloadLen);
-                    return shouldContinue;
-                });
+                shouldContinue = found_record_cb(keyLen, payload, payloadLen);
+                // cout << shouldContinue << endl;
+                return shouldContinue;
+            });
 #ifndef NDEBUG
-        if (shouldContinue) {
+        if (shouldContinue)
+        {
+            if (std_iterator != stdMap.end())
+            {
+                string str(std_iterator->first.begin(), std_iterator->first.end());
+                // cout << "The std_iterator has the data: " << string_to_hex(str) << endl;
+                auto count = 0;
+                while (std_iterator != stdMap.end() && count <=10)
+                {
+                    
+                    count++;
+                    std_iterator++;
+                    string str(std_iterator->first.begin(), std_iterator->first.end());
+                    // cout << "The std_iterator has the data: " << string_to_hex(str) << endl;
+                }
+                // cout << "Off by: " << count << endl;
+
+
+            }
             assert(std_iterator == stdMap.end());
         }
 #endif

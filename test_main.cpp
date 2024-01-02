@@ -5,6 +5,7 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include <iomanip>
 
 using namespace std;
 
@@ -22,10 +23,14 @@ void runTest(vector<vector<uint8_t>> &keys,PerfEvent& perf) {
             t->insert(keys[i], keys[i]);
         }
     }
+    string str(keys[count/2].begin(), keys[count/2].end()) ;
+    cout << string_to_hex(str) << endl;
+    // t->btree->root->print();
     {
         printf("SCAN STARTS\n");
         PerfEventBlock peb(perf,count/5,{"scan"});
         for (uint64_t i = 0; i < count; i += 5) {
+            // cout << i << endl;
             unsigned limit = 10;
             t->scan(keys[i], [&](uint16_t, uint8_t *, uint16_t) {
                 limit -= 1;
