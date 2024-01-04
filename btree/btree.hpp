@@ -18,6 +18,7 @@
 #include <x86intrin.h>
 #include <functional>
 #include "common.h"
+// #include "eytzinger.h"
 using u8 = uint8_t;
 using u16 = uint16_t;
 using u32 = uint32_t;
@@ -37,7 +38,7 @@ struct BTreeNodeHeader
     static const unsigned under_full = PAGE_SIZE * 0.6;
     static constexpr u8 limit = 254;
     static constexpr u8 marker = 255;
-     
+
     static const unsigned padding = 0;
 
     struct FenceKey
@@ -81,14 +82,21 @@ struct BTreeNode : public BTreeNodeHeader
             u8 headBytes[4];
         };
     };
-    PageSlot slot[(PAGE_SIZE - sizeof(BTreeNodeHeader)) / (sizeof(PageSlot))];
+    const static size_t slotnum = (PAGE_SIZE - sizeof(BTreeNodeHeader)) / (sizeof(PageSlot));
+    PageSlot slot[slotnum]; // 0 index
+
+    PageSlot slot_eytzinger[slotnum + 1]; // 1 index
 
     BTreeNode(bool is_leaf)
         : BTreeNodeHeader(is_leaf) {}
 
+    // here  could be some fuckery:
     unsigned freeSpace() { return free_offset - (reinterpret_cast<u8 *>(slot + count) - ptr()); }
-    unsigned spacePostCompact() { return PAGE_SIZE - (reinterpret_cast<u8 *>(slot + count) - ptr()) - space_used; }
+    unsigned freeSpaceEyt() { return free_offset - (reinterpret_cast<u8 *>(slot_eytzinger + count) - ptr()); }
 
+    unsigned spacePostCompact() { return PAGE_SIZE - (reinterpret_cast<u8 *>(slot + count) - ptr()) - space_used; }
+    unsigned spacePostCompactEyt() { return PAGE_SIZE - (reinterpret_cast<u8 *>(slot_eytzinger + count) - ptr()) - space_used; }
+    //============================================================
     bool allocateSpace(unsigned spaceNeeded)
     {
         auto space = freeSpace();
@@ -102,46 +110,119 @@ struct BTreeNode : public BTreeNodeHeader
         return false;
     }
 
+    bool allocateSpaceEyt(unsigned spaceNeeded)
+    {
+        auto space = freeSpaceEyt();
+        if (spaceNeeded <= space)
+            return true;
+        if (spaceNeeded <= spacePostCompactEyt())
+        {
+            compactEyt();
+            return true;
+        }
+        return false;
+    }
+    //============================================================
+
     static BTreeNode *makeLeaf() { return new BTreeNode(true); }
     static BTreeNode *makeInner() { return new BTreeNode(false); }
+    //============================================================
     inline u8 *getRest(unsigned slot_id)
     {
         assert(!isLarge(slot_id));
         return ptr() + slot[slot_id].offset + sizeof(SwipType);
     }
+    inline u8 *getRestEyt(unsigned slot_id)
+    {
+        assert(!isLargeEyt(slot_id));
+        return ptr() + slot_eytzinger[slot_id].offset + sizeof(SwipType);
+    }
+    //============================================================F
+
     inline unsigned getRemainderLength(unsigned slot_id)
     {
         assert(!isLarge(slot_id));
         return slot[slot_id].remainderLen;
     }
+    inline unsigned getRemainderLengthEyt(unsigned slot_id)
+    {
+        assert(!isLargeEyt(slot_id));
+        return slot_eytzinger[slot_id].remainderLen;
+    }
+    //============================================================
+
+    //============================================================
     inline u8 *getPayload(unsigned slot_id)
     {
         assert(!isLarge(slot_id));
         return ptr() + slot[slot_id].offset + sizeof(SwipType) + getRemainderLength(slot_id);
     }
+    inline u8 *getPayloadEyt(unsigned slot_id)
+    {
+        assert(!isLargeEyt(slot_id));
+        return ptr() + slot_eytzinger[slot_id].offset + sizeof(SwipType) + getRemainderLengthEyt(slot_id);
+    }
+    //============================================================
 
+    //============================================================
     inline u8 *getRemainderLarge(unsigned slot_id)
     {
         assert(isLarge(slot_id));
         return ptr() + slot[slot_id].offset + sizeof(SwipType) + sizeof(u16);
     }
+    inline u8 *getRemainderLargeEyt(unsigned slot_id)
+    {
+        assert(isLargeEyt(slot_id));
+        return ptr() + slot_eytzinger[slot_id].offset + sizeof(SwipType) + sizeof(u16);
+    }
+    //============================================================
+
+    //============================================================
     inline u16 &getRestLenLarge(unsigned slot_id)
     {
         assert(isLarge(slot_id));
         return *reinterpret_cast<u16 *>(ptr() + slot[slot_id].offset + sizeof(SwipType));
     }
-    inline bool isLarge(unsigned slot_id) { return slot[slot_id].remainderLen == marker; }
-    inline void setLarge(unsigned slot_id) { slot[slot_id].remainderLen = marker; }
+    inline u16 &getRestLenLargeEyt(unsigned slot_id)
+    {
+        assert(isLargeEyt(slot_id));
+        return *reinterpret_cast<u16 *>(ptr() + slot_eytzinger[slot_id].offset + sizeof(SwipType));
+    }
+    //============================================================
 
+    //============================================================
+    inline bool isLarge(unsigned slot_id) { return slot[slot_id].remainderLen == marker; }
+    inline bool isLargeEyt(unsigned slot_id) { return slot_eytzinger[slot_id].remainderLen == marker; }
+
+    inline void setLarge(unsigned slot_id) { slot[slot_id].remainderLen = marker; }
+    inline void setLargeEyt(unsigned slot_id) { slot_eytzinger[slot_id].remainderLen = marker; }
+    //============================================================
+
+    //============================================================
     inline u8 *getPayloadLarge(unsigned slot_id)
     {
         assert(isLarge(slot_id));
         return ptr() + slot[slot_id].offset + sizeof(SwipType) + sizeof(u16) + getRestLenLarge(slot_id);
     }
+    inline u8 *getPayloadLargeEyt(unsigned slot_id)
+    {
+        assert(isLargeEyt(slot_id));
+        return ptr() + slot_eytzinger[slot_id].offset + sizeof(SwipType) + sizeof(u16) + getRestLenLargeEyt(slot_id);
+    }
+    //============================================================
 
+    //============================================================
     inline u64 getPayloadLength(unsigned slot_id) { return *reinterpret_cast<u64 *>(ptr() + slot[slot_id].offset); }
+    inline u64 getPayloadLengthEyt(unsigned slot_id) { return *reinterpret_cast<u64 *>(ptr() + slot_eytzinger[slot_id].offset); }
+
     inline SwipType &getChild(unsigned slot_id) { return *reinterpret_cast<SwipType *>(ptr() + slot[slot_id].offset); }
+    inline SwipType &getChildEyt(unsigned slot_id) { return *reinterpret_cast<SwipType *>(ptr() + slot_eytzinger[slot_id].offset); }
+
     inline unsigned getFullKeyLength(unsigned slot_id) { return prefix_len + slot[slot_id].headLen + (isLarge(slot_id) ? getRestLenLarge(slot_id) : getRemainderLength(slot_id)); }
+    inline unsigned getFullKeyLengthEyt(unsigned slot_id) { return prefix_len + slot_eytzinger[slot_id].headLen + (isLargeEyt(slot_id) ? getRestLenLargeEyt(slot_id) : getRemainderLengthEyt(slot_id)); }
+    //============================================================
+
+    //============================================================
 
     inline void copyKeyOut(unsigned slot_id, u8 *out, unsigned key_len)
     {
@@ -177,6 +258,42 @@ struct BTreeNode : public BTreeNodeHeader
             };
         }
     }
+
+    inline void copyKeyOutEyt(unsigned slot_id, u8 *out, unsigned key_len)
+    {
+        std::copy_n(getLowerFenceKey(), prefix_len, out);
+        out += prefix_len;
+        key_len -= prefix_len;
+
+        auto &current_slot = slot_eytzinger[slot_id];
+        auto headLen = current_slot.headLen;
+
+        if (key_len >= headLen)
+        {
+            *reinterpret_cast<u32 *>(out) = swap(current_slot.head);
+            memcpy(out + headLen, (isLargeEyt(slot_id) ? getRemainderLargeEyt(slot_id) : getRestEyt(slot_id)), key_len - headLen);
+        }
+        else
+        {
+            switch (headLen)
+            {
+            case 4:
+                *reinterpret_cast<u32 *>(out) = swap(current_slot.head);
+                break;
+            case 3:
+                out[2] = current_slot.headBytes[1]; // fallthrough
+            case 2:
+                out[1] = current_slot.headBytes[2]; // fallthrough
+            case 1:
+                out[0] = current_slot.headBytes[3]; // fallthrough
+            case 0:
+                break;
+            default:
+                __builtin_unreachable();
+            };
+        }
+    }
+    //============================================================
 
     static unsigned spaceNeeded(unsigned key_len, unsigned prefix_len)
     {
@@ -237,8 +354,173 @@ struct BTreeNode : public BTreeNodeHeader
             hint[i] = slot[dist * (i + 1)].head;
     }
 
+    // wont be used at the final
+    void makeHintEyt()
+    {
+        unsigned dist = count / (hintCount + 1);
+        for (unsigned i = 0; i < hintCount; i++)
+            hint[i] = slot_eytzinger[dist * (i + 1)].head;
+    }
+
+    //////////////////////////////////////////////////////////////////
+    int eytzinger(int i = 0, int k = 1)
+    {
+        if (k <= count)
+        {
+            i = eytzinger(i, 2 * k);
+            slot_eytzinger[k] = slot[i++];
+            i = eytzinger(i, 2 * k + 1);
+        }
+        return i;
+    }
+    int search(int x)
+    {
+        int k = 1;
+        while (k <= slotnum)
+        {
+            if (slot_eytzinger[k].head >= x)
+                k = 2 * k;
+            else
+                k = 2 * k + 1;
+        }
+        k >>= __builtin_ffs(~k);
+        return k;
+    }
+
+    template <bool equalityOnly = false>
+    unsigned lowerBoundEytzinger(u8 *key, unsigned keyLength)
+    {
+        eytzinger();
+        // std::string s; 
+        // for (auto i = 0; i < slotnum; i++)
+        // {
+        //     // if (slot_eytzinger[i] != NULL)
+        //     s.append(to_string(slot_eytzinger[i].head));
+        //     s.append(", ");
+        // }
+        // cout << s << endl;
+        // s.clear();
+        // cout << "------------" << endl;
+        // for (auto i = 0; i < slotnum; i++)
+        // {
+        //     // if (slot[i] != NULL)
+        //     s.append(to_string(slot[i].head));
+        //     s.append(", ");
+        // }
+        // cout << s << endl;
+
+        // key += prefix_len;
+        // keyLength -= prefix_len;
+
+        // return search(extractKeyHead(key, keyLength));
+        if (equalityOnly)
+        {
+            if ((keyLength < prefix_len) || (bcmp(key, getLowerFenceKey(), prefix_len) != 0))
+                return -1;
+        }
+        else
+        {
+            int prefixCmp = cmpKeys(key, getLowerFenceKey(), min<unsigned>(keyLength, prefix_len), prefix_len);
+            if (prefixCmp < 0)
+                return 0;
+            else if (prefixCmp > 0)
+                return count;
+        }
+        key += prefix_len;
+        keyLength -= prefix_len;
+
+        unsigned oldKeyLength = keyLength;
+        u32 keyHead = extractKeyHead(key, keyLength);
+
+        int k = 1;
+        // full binary search
+        while (k <= slotnum)
+        {
+            if (slot_eytzinger[k].head > keyHead)
+                k = 2 * k;
+            else if ((slot_eytzinger[k].head < keyHead))
+                k = 2 * k + 1;
+
+            else if (slot_eytzinger[k].remainderLen == 0)
+            {
+                cout << "THE oldkeylen: " << oldKeyLength << "  :  " << slot_eytzinger[k].headLen << endl;
+                if (oldKeyLength < slot_eytzinger[k].headLen)
+                {
+                    k = 2 * k;
+                }
+                else if (oldKeyLength > slot_eytzinger[k].headLen)
+                {
+                    k = 2 * k + 1;
+                }
+                else
+                {
+                    cout << slot_eytzinger[k].head << " and the " << keyHead << endl;
+                    k >>= __builtin_ffs(~k);
+                    return k;
+                }
+            }
+            else
+            {
+                int cmp;
+                cout << "AAAAAAAAAAAAA " << endl;
+                if (isLargeEyt(k))
+                {
+                    cmp = cmpKeys(key, getRemainderLargeEyt(k), keyLength, getRestLenLargeEyt(k));
+                }
+                else
+                {
+                    cmp = cmpKeys(key, getRestEyt(k), keyLength, getRemainderLengthEyt(k));
+                }
+                if (cmp < 0)
+                {
+                    k = 2 * k;
+                }
+                else if (cmp > 0)
+                {
+                    k = 2 * k + 1;
+                }
+                else
+                {
+                    k >>= __builtin_ffs(~k);
+
+                    return k;
+                }
+            }
+        }
+        // there is no exact match
+        if (equalityOnly)
+            return -1;
+        k >>= __builtin_ffs(~k);
+
+        return k;
+    }
+
+    //////////////////////////////////////////////////////////////////
     template <bool equalityOnly = false>
     unsigned lowerBound(u8 *key, unsigned keyLength)
+    {
+        auto valeyt = lowerBoundEytzinger<equalityOnly>(key, keyLength);
+        // std::cout << "We arrived here" <<std::endl;
+        auto valbin = lowerBound1<equalityOnly>(key, keyLength);
+        // eytzinger();
+        std::cout << "Valeyt is : " << valeyt << " : ValBIN: " << valbin << std::endl;
+        // std::cout << slot_eytzinger[valeyt].head << " : " << slot[valbin].head << std::endl;
+        try
+        {
+            // std::cout << slot_eytzinger[valeyt].head << " : " << slot[valbin].head << std::endl;
+            if (valeyt != 0xffffffff && valbin != 0xffffffff)
+                assert(slot_eytzinger[valeyt].head == slot[valbin].head);
+        }
+        catch (const std::exception &e)
+        {
+            std::cout << "AAAAAAAAAAAAAAAA" << std::endl;
+            std::cerr << slot_eytzinger[valeyt].head << "  and   " << slot[valbin].head << e.what() << '\n';
+        }
+        return valbin;
+    }
+
+    template <bool equalityOnly = false>
+    unsigned lowerBound1(u8 *key, unsigned keyLength)
     {
 
         // if (lower_fence.offset)
@@ -386,7 +668,7 @@ struct BTreeNode : public BTreeNodeHeader
             return false;
         return removeSlot(slot_id);
     }
-
+    //============================================================
     void compact()
     {
         unsigned should = spacePostCompact();
@@ -400,6 +682,16 @@ struct BTreeNode : public BTreeNodeHeader
         // assert(freeSpace() == should);
     }
 
+    void compactEyt()
+    {
+        BTreeNode tmp(is_leaf);
+        tmp.setFences(getLowerFenceKey(), lower_fence.length, getUpperFenceKey(), upper_fence.length);
+        copyKeyValueRange(&tmp, 0, 0, count);
+        tmp.upper = upper;
+        memcpy(reinterpret_cast<char *>(this), &tmp, sizeof(BTreeNode));
+        makeHint();
+    }
+    //============================================================
     unsigned calculateMergeSpace(const BTreeNode &tempNode, const BTreeNode *right, unsigned slot_id = 0, BTreeNode *parent = nullptr)
     {
         unsigned leftGrow = (prefix_len - tempNode.prefix_len) * count;
@@ -797,7 +1089,7 @@ struct BTreeNode : public BTreeNodeHeader
         }
     }
 
-    void print(uint8_t *key, unsigned keyLength,uint8_t *keyOut,
+    void print(uint8_t *key, unsigned keyLength, uint8_t *keyOut,
                const std::function<bool(unsigned int, uint8_t *, unsigned int)>
                    &found_callback)
     {
@@ -817,7 +1109,7 @@ struct BTreeNode : public BTreeNodeHeader
         // cout << "index is : " << index << endl;
         // cout << "Total indexes are: " << parent->count << endl;
         // if(parent->upper->is_leaf && root == parent) cout<< "There is no more itearions" << endl;
-        parent->print2(index, key, keyLength,keyOut,found_callback);
+        parent->print2(index, key, keyLength, keyOut, found_callback);
 
         // auto index2 = root->lookupInnerPos(key,keyLength);
         // cout << "THe root index : " << index2 << " and the total are: " << root->count << endl;
@@ -830,27 +1122,26 @@ struct BTreeNode : public BTreeNodeHeader
         //     cout << "last one" << endl;
         //     root->upper->print2(0,key, keyLength, keyOut, found_callback );
         // }
-        
     }
 
     void print2(int index, uint8_t *key, unsigned keyLength, uint8_t *keyOut,
-               const std::function<bool(unsigned int, uint8_t *, unsigned int)>
-                   &found_callback)
+                const std::function<bool(unsigned int, uint8_t *, unsigned int)>
+                    &found_callback)
     {
         if (isInner() && cont)
         {
-            
+
             for (unsigned i = index; i < count; i++)
             {
                 getChild(i)->print2(0, key, keyLength, keyOut, found_callback);
             }
             // cout << "we called this" << endl;
-            upper->print2(0, key, keyLength,keyOut, found_callback);
+            upper->print2(0, key, keyLength, keyOut, found_callback);
             // cout << "we returned to this" << endl;
         }
-        else if(cont)
+        else if (cont)
         {
-            int pos = lowerBound<true>(key,keyLength);
+            int pos = lowerBound<true>(key, keyLength);
             if (pos == -1)
                 pos = 0;
             for (unsigned i = pos; i < count; i++)
