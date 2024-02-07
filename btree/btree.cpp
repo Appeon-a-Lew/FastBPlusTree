@@ -169,9 +169,10 @@ bool BTree::remove(u8 *key, unsigned keyLength)
 }
 BTree::~BTree()
 {
+   makeAllEyt(root);
    root->destroy();
-   // delete root;
-}
+   // delete this; <-- segfault
+   }
 BTree *btree_create()
 {
    return new BTree();
@@ -200,8 +201,7 @@ u8 *btree_lookup(BTree *btree, u8 *key, u16 keyLength, u16 &payloadLength)
 {
    if (keyLength == 0 || !key)
       return nullptr;
-   u8 *result = new u8[keyLength]; 
-   // u8 result[btree->getPayloadLenLookup(key,keyLength)];
+   u8 *result = new u8[btree->getPayloadLenLookup(key,keyLength)]; 
    u64 payloadLength64;
    if (btree->lookup(key, keyLength, payloadLength64, result))
    {
@@ -276,6 +276,8 @@ void btree_scan(BTree *tree, uint8_t *key, unsigned keyLength, uint8_t *keyOut,
 
    tree->makeAllSorted(tree->root);
    inner_rec(tree->root, key, keyLength, keyOut, found_callback);
+
+   //tree-root->scan(key, keyLength, keyOut, found_callback); 
 
 }
 
