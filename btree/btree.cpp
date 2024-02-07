@@ -7,8 +7,9 @@
  */
 
 #include "btree.hpp"
-#include "common.h"
+#include "../common.h"
 bool cont;
+int split = 0;
 BTree::BTree()
     : root(BTreeNode::makeLeaf()) {}
 bool BTree::lookup(u8 *key, unsigned keyLength, u64 &payloadLength, u8 *result)
@@ -17,16 +18,17 @@ bool BTree::lookup(u8 *key, unsigned keyLength, u64 &payloadLength, u8 *result)
    while (node->isInner())
       node = node->lookupInner(key, keyLength);
    int pos = node->lowerBound<true>(key, keyLength);
+
    if (pos != -1)
    {
       payloadLength = u64(node->getChild(pos));
       if (node->isLarge(pos))
       {
-         memcpy(result, node->getPayloadLarge(pos), node->getPayloadLength(pos)); //maybe padding too
+         memcpy(result, node->getPayloadLarge(pos), node->getPayloadLength(pos)); 
       }
       else
       {
-         memcpy(result, node->getPayload(pos), node->getPayloadLength(pos) - node->padding);
+         memcpy(result, node->getPayload(pos), node->getPayloadLength(pos));
       }
       return true;
    }
@@ -39,10 +41,11 @@ u64 BTree::getPayloadLenLookup(u8 *key, unsigned keyLength)
    while (node->isInner())
       node = node->lookupInner(key, keyLength);
    int pos = node->lowerBound<true>(key, keyLength);
-   if (pos != -1){
+   if (pos != -1)
+   {
       if (node->isLarge(pos))
       {
-         return  node->getPayloadLength(pos); //maybe padding too
+         return node->getPayloadLength(pos); 
       }
       else
       {
@@ -57,10 +60,12 @@ void BTree::insert(u8 *key, unsigned keyLength, u64 payloadLength, u8 *payload)
    BTreeNode *parent = nullptr;
    while (node->isInner())
    {
+
       parent = node;
       node = node->lookupInner(key, keyLength);
    }
-   if (node->insert(key, keyLength, SwipType(payloadLength + (node->padding)), payload))
+   assert(node->isSorted(node->slot, node->count));
+   if (node->insert(key, keyLength, SwipType(payloadLength), payload))
       return;
    splitNode(node, parent, key, keyLength);
    insert(key, keyLength, payloadLength, payload);
@@ -80,10 +85,15 @@ void BTree::splitNode(BTreeNode *node, BTreeNode *parent, u8 *key, unsigned keyL
       parent->upper = node;
       root = parent;
    }
+   if (node->is_eyt)
+   {
+      node->convertFromEytzinger(node->slot, node->count, node->slot[node->count]);
+   }
+
    BTreeNode::SeparatorInfo sepInfo = node->findSep();
    unsigned spaceNeededParent = BTreeNode::spaceNeeded(sepInfo.length, parent->prefix_len);
    if (parent->allocateSpace(spaceNeededParent))
-   { 
+   {
       u8 sepKey[sepInfo.length];
       node->getSep(sepKey, sepInfo);
       node->split(parent, sepInfo.slot, sepKey, sepInfo.length);
@@ -104,6 +114,32 @@ void BTree::splitInner(BTreeNode *splitingNode, u8 *key, unsigned keyLength)
    }
    splitNode(splitingNode, parent, key, keyLength);
 }
+
+bool BTree::merge_help(u8 *key, unsigned keyLength, BTreeNode *node)
+{
+   BTreeNode *parent = nullptr;
+   int pos = 0;
+   while (node->isInner())
+   {
+      parent = node;
+      node->convertFromEytzinger(node->slot, node->count, node->slot[node->count]);
+      pos = node->lowerBound<false>(key, keyLength);
+      node = (pos == node->count) ? node->upper : node->getChild(pos);
+   }
+   if (node->spacePostCompact() >= BTreeNodeHeader::under_full)
+   {
+      if (node != root && (parent->count >= 2) && (pos + 1) < parent->count)
+      {
+         BTreeNode *right = parent->getChild(pos + 1);
+         if (right->spacePostCompact() >= BTreeNodeHeader::under_full)
+         {
+            return node->merge(pos, parent, right);
+         }
+      }
+   }
+   return true;
+}
+
 bool BTree::remove(u8 *key, unsigned keyLength)
 {
    BTreeNode *node = root;
@@ -112,21 +148,23 @@ bool BTree::remove(u8 *key, unsigned keyLength)
    while (node->isInner())
    {
       parent = node;
-      pos = node->lowerBound<false>(key, keyLength);
-      node = (pos == node->count) ? node->upper : node->getChild(pos);
+      pos = node->lookupInnerPos(key, keyLength);
+      node = node->lookupInner(key, keyLength);   
    }
    static_cast<void>(parent);
    if (!node->remove(key, keyLength))
       return false;
-   if (node->spacePostCompact() >= BTreeNodeHeader::under_full)
+
+   if (parent && node->spacePostCompact() >= BTreeNodeHeader::under_full)
    {
-      if (node != root && (parent->count >= 2) && (pos + 1) < parent->count)
+      if (node != root && (parent->count >= 2) && (2 * pos + 2) < parent->count)
       {
-         BTreeNode *right = parent->getChild(pos + 1);
+         BTreeNode *right = parent->getChild(2 * pos + 2);
          if (right->spacePostCompact() >= BTreeNodeHeader::under_full)
-            return node->merge(pos, parent, right);
+            return merge_help(key, keyLength, parent);
       }
    }
+
    return true;
 }
 BTree::~BTree()
@@ -162,12 +200,12 @@ u8 *btree_lookup(BTree *btree, u8 *key, u16 keyLength, u16 &payloadLength)
 {
    if (keyLength == 0 || !key)
       return nullptr;
-   u8 *result = new u8[btree->getPayloadLenLookup(key,keyLength)];
+   u8 *result = new u8[keyLength]; 
    // u8 result[btree->getPayloadLenLookup(key,keyLength)];
    u64 payloadLength64;
    if (btree->lookup(key, keyLength, payloadLength64, result))
    {
-      payloadLength = payloadLength64 - btree->root->padding;
+      payloadLength = payloadLength64;
       return result;
    }
    else
@@ -182,7 +220,6 @@ bool btree_remove(BTree *btree, u8 *key, u16 keyLength)
    return btree->remove(key, keyLength);
 }
 
-
 void inner_rec(BTreeNode *node, uint8_t *key, unsigned keyLength, uint8_t *keyOut,
                const std::function<bool(unsigned int, uint8_t *, unsigned int)>
                    &found_callback)
@@ -192,7 +229,7 @@ void inner_rec(BTreeNode *node, uint8_t *key, unsigned keyLength, uint8_t *keyOu
       bool shouldContinue = true;
       for (int i = 0; i < node->count; i++)
       {
-         u8 key_inner[1024]; //probably change it.
+         u8 key_inner[node->getFullKeyLength(i)]; 
          node->copyKeyOut(i, key_inner, node->getFullKeyLength(i));
          if (BTreeNode::cmpKeys(key, key_inner, keyLength, node->getFullKeyLength(i)) > 0)
          {
@@ -201,7 +238,7 @@ void inner_rec(BTreeNode *node, uint8_t *key, unsigned keyLength, uint8_t *keyOu
          auto fullKeyLength = node->getFullKeyLength(i);
          node->copyKeyOut(i, keyOut, fullKeyLength);
          auto payload = (node->isLarge(i)) ? node->getPayloadLarge(i) : node->getPayload(i);
-         auto payloadLength = node->getPayloadLength(i) - node->padding;
+         auto payloadLength = node->getPayloadLength(i) ;
          shouldContinue = found_callback(fullKeyLength, payload, payloadLength);
          if (!shouldContinue)
          {
@@ -212,15 +249,8 @@ void inner_rec(BTreeNode *node, uint8_t *key, unsigned keyLength, uint8_t *keyOu
    }
    else if (cont)
    {
-      u8 key_inner[1024];
-      node->copyKeyOut(node->count - 1, key_inner, node->getFullKeyLength(node->count - 1));
-      auto x = BTreeNode::cmpKeys(key, key_inner, keyLength, node->getFullKeyLength(node->count - 1)) > 0;
-      if (x)
-      {
-         inner_rec(node->upper, key, keyLength, keyOut, found_callback);
-         return;
-      }
-      for (int i = 0; i < node->count; i++)
+      unsigned pos = node->lowerBound<false>(key,keyLength);
+      for (int i = pos; i < node->count; i++)
       {
          inner_rec(node->getChild(i), key, keyLength, keyOut, found_callback);
       }
@@ -243,110 +273,9 @@ void btree_scan(BTree *tree, uint8_t *key, unsigned keyLength, uint8_t *keyOut,
       return;
    }
    cont = true;
-   // auto node = tree->root;
-   // auto parent = node;
-   // while (node->isInner())
-   // {
-   //    parent = node;
-   //    node = node->lookupInner(key, keyLength);
-   // }
-   // inner_rec(tree->root, key, keyLength, keyOut, found_callback);
-   // vector<uint8_t> tmp(key,key + keyLength);
-   tree->root->print(key,keyLength, keyOut,found_callback);
+
+   tree->makeAllSorted(tree->root);
+   inner_rec(tree->root, key, keyLength, keyOut, found_callback);
+
 }
 
-// parent =
-// node = node->upper;
-// pos = 0;
-
-//  if(pos_outer + 1 < parent->count && parent != node && pos_outer + 1 > pos)
-//       {
-//          pos_outer++;
-//          node = parent->getValue(pos_outer);
-//          pos = 0;
-//          std :: cout << "pos_outer: " << pos_outer << std::endl;
-//          continue;
-//       }
-//       else
-
-//       if (node->upper == nullptr)
-//       {
-//          cout << "upper is null" << endl;
-//          return;
-//       }
-//       node = node->upper;
-
-// auto node = tree->root;
-//    auto parent = node;
-//    unsigned pos_outer = 0;
-//    while (node->isInner())
-//    {
-//       parent = node;
-//       node = node->lookupInner(key, keyLength);
-//       pos_outer = parent->lookupInnerPos(key, keyLength);
-//    }
-
-//    bool single_height = parent == node;
-
-//    std::cout << "node->count: " << node->count << std::endl;
-//    std ::cout << "node->isLeaf: " << node->isLeaf << std::endl;
-//    std::cout << "The key: " << key << std::endl;
-//    std::cout << "the parent count: " << parent->count << std::endl;
-//    bool shouldContinue = true;
-//    auto pos = node->lowerBound<true>(key, keyLength);
-
-//    while (shouldContinue)
-//    {
-//       if (pos_outer == -1)
-//          pos_outer = 0;
-//       for (int i = pos_outer; (parent); i++)
-//       {
-//          if (pos == -1)
-//          {
-//             pos = 0;
-//          }
-//          // node = parent->getValue(i);
-//          std ::cout << "pos: " << pos << std::endl;
-//          for (; pos < node->count; pos++)
-//          {
-//             std::cout << "pos: " << pos << std::endl;
-//             std ::cout.flush();
-//             auto fullKeyLength = node->getFullKeyLength(pos);
-//             node->copyFullKey(pos, keyOut, fullKeyLength);
-//             std ::cout << "keyOut: " << keyOut << std::endl;
-//             auto payload = (node->isLarge(pos)) ? node->getPayloadLarge(pos) : node->getPayload(pos);
-//             auto payloadLength = node->getPayloadLength(pos) - tree->root->padding;
-//             shouldContinue = found_callback(fullKeyLength, payload, payloadLength);
-//             std ::cout << "shouldContinue: " << shouldContinue << std::endl;
-//             if (!shouldContinue)
-//             {
-//                return;
-//             }
-//          }
-//          if (single_height)
-//             return;
-//          node = parent->getValue(i + 1);
-//          std ::cout << "node->count: " << node->count << std::endl;
-//          std ::cout << "node->isLeaf: " << node->isLeaf << std::endl;
-//          std ::cout << "parent->count: " << parent->count << std::endl;
-//          std ::cout << "i: " << i << std::endl;
-
-//          pos = 0;
-//       }
-//       // if (parent == nullptr)
-//       // {
-//       //    std::cout << "parent is null" << std::endl;
-//       //    return;
-//       // }
-
-//       // if (parent->upper == nullptr)
-//       // {
-//       //    std::cout << "upper is null" << std::endl;
-//       //    return;
-//       // }
-
-//       // if(node -> upper == nullptr){
-//       //    std::cout << "node->upper is null" << std::endl;
-//       //    return;
-//       // }
-//    }

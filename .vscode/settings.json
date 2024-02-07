@@ -58,6 +58,14 @@
         "optional": "cpp",
         "span": "cpp",
         "variant": "cpp",
-        "format": "cpp"
+        "format": "cpp",
+        "semaphore": "cpp",
+        "stop_token": "cpp",
+        "thread": "cpp",
+        "condition_variable": "cpp",
+        "set": "cpp",
+        "mutex": "cpp",
+        "unordered_set": "cpp",
+        "list": "cpp"
     }
 }

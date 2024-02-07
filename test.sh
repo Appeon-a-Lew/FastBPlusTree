@@ -10,4 +10,4 @@ NO_SCAN=1 LONG2=480 ./main
 INT=10  ./main
 INT=1e6  ./main
 # you can get the urls file from moodle and gunzip it
-FILE=data/urls ./main
+FILE=data/urls.txt ./main

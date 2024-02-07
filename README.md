@@ -1,17 +1,3 @@
-# why the late submission
-
-## git problems
-I tried and tried to push but could not becuase of the merge conflicts. So on the 20th did a hard reset and pushed. see the screenshot. Sorry for the inconvenience. 
-
-## known problems
-
-- double free: during deleting the upper is deleted twice 
-- empty string: empty string is breaking 
-- slow scan: the scan is incredibly slow :/
-
-
-
-
 
 
 # DSE Practical Course Exercise Template

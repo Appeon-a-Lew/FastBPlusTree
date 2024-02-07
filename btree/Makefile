@@ -8,11 +8,13 @@ btree-optimized.a: btree-optimized.o
 	rm -f btree-optimized.a
 	ar rcs btree-optimized.a btree-optimized.o
 
-btree.o:btree.cpp btree.hpp common.h eytzinger.h
-	clang++ -Wall -Wextra   -g -c btree.cpp -o $@ -DNDEBUG
 
-btree-optimized.o: btree.cpp btree.hpp common.h eytzinger.h
+btree.o:btree.cpp btree.hpp ../common.h
+	clang++ -Wall -Wextra   -g -c btree.cpp -o $@ 
+	
+btree-optimized.o: btree.cpp btree.hpp ../common.h
 	clang++ -Wall -Wextra -g -c btree.cpp -o $@ -O3 -DNDEBUG
+	
 
 clean:
-	rm -f btree.o btree.a btree-optimized.o btree-optimized.a
+	rm -f btree.o btree.a btree-optimized.o btree-optimized.a map-optimized.a map-optimized.o 
