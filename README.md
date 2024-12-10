@@ -6,9 +6,8 @@ A modern, high-performance B+ Tree implementation in C++ designed as a drop-in r
 
 - **High Performance**: Achieves significant speed improvements over traditional `std::map` through efficient design and implementation.
 - **Tight Memory Control**: Minimizes memory overhead while maintaining scalability.
-- **Variable Data Support**: Flexibly handles various data types for diverse applications.
-- **Comprehensive Testing**: Verified using extensive `doctest` cases for reliability and accuracy.
-
+- **Variable Data Support**: Handles variable data types without size limitation (pageSize < )
+- **Comprehensive Testing**: Verified using  `doctest` cases.
 ## Use Cases
 
 - High-throughput systems requiring efficient data storage and retrieval.
